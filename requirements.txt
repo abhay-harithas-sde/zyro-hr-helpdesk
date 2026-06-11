@@ -4,7 +4,7 @@ langchain-text-splitters
 langchain-groq
 langchain-huggingface
 langsmith
-faiss-cpu
+faiss-cpu>=1.13.0
 pypdf
 sentence-transformers
 streamlit
