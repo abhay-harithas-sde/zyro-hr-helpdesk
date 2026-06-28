@@ -132,13 +132,14 @@ OOS_KEYWORDS = [
 HR_KEYWORDS = [
     "leave", "wfh", "work from home", "remote", "performance", "review",
     "appraisal", "salary", "compensation", "benefits", "insurance", "probation",
-    "notice period", "separation", "onboarding", "travel", "expense",
+    "notice period", "separation", "onboarding", "onboard", "travel", "expense",
     "reimbursement", "posh", "harassment", "code of conduct", "attendance",
     "holiday", "payroll", "promotion", "pip", "okr", "grade", "esop",
     "maternity", "paternity", "sick", "casual", "earned leave", "medical",
     "it policy", "data security", "device", "password", "bonus", "ctc",
     "increment", "vesting", "stock option", "l3", "l4", "l5", "l6",
     "zyrohr", "portal", "240 days", "80 days", "carry forward",
+    "coffee policy",  # ensure this hits OOS not HR (matched by OOS_KEYWORDS first)
 ]
 
 GENERIC_HR_SIGNALS = [
@@ -149,14 +150,16 @@ GENERIC_HR_SIGNALS = [
 ]
 
 LLM_REFUSAL_PHRASES = [
-    "does not contain information", "does not provide information",
-    "context does not contain", "cannot answer", "unable to find",
-    "no information available", "outside the scope", "not covered",
-    "there is no information", "no mention of", "not mentioned",
-    "not found in", "not part of", "not included in",
-    "i cannot answer", "outside my scope", "cannot find",
-    "not available in the provided", "i don't have information",
-    "the documents do not", "the policy does not",
+    # Only trigger on clear hard refusals — NOT on partial hedging phrases
+    # that appear in valid in-scope answers (e.g. "the policy does not explicitly...")
+    "outside the scope of our hr knowledge base",
+    "outside the scope of hr",
+    "i cannot answer this question",
+    "unable to answer this question",
+    "this question is outside",
+    "not an hr-related question",
+    "not related to hr",
+    "beyond the scope of hr",
 ]
 
 POLICY_DOCS = [
@@ -207,6 +210,11 @@ Questions you MUST refuse:
 - Personal finance (loans, credit cards, bank accounts)
 - External job applications, recruitment, hiring process
 - Product features, product comparisons
+
+IMPORTANT IN-SCOPE EXAMPLES (do NOT refuse these):
+- "Can I work from home if I am sick?" → Answer using Ad-hoc WFH policy (minor health reasons)
+- "What is the time period for onboarding?" → Answer using 90-Day Onboarding Programme
+- Any question about leave, WFH, salary, PIP, APR, benefits, ESOP, onboarding, POSH
 
 ═══════════════════════════════════════════
 ANSWERING IN-SCOPE HR QUESTIONS
@@ -328,14 +336,13 @@ def ask(question: str, retriever, chain) -> dict:
     docs   = retriever.invoke(question)
     answer = chain.invoke({"question": question})
 
-    # Layer 4a: LLM produced a refusal phrase
-    if any(p in answer.lower() for p in LLM_REFUSAL_PHRASES):
-        # If the LLM truly can't find it, use canonical refusal
-        if "outside the scope" in answer.lower() or "i'm sorry" in answer.lower():
-            return {"answer": REFUSAL_MSG, "sources": [], "oos": True}
+    # Layer 4a: only replace with canonical refusal if LLM explicitly refused
+    ans_lower = answer.lower()
+    if any(p in ans_lower for p in LLM_REFUSAL_PHRASES):
+        return {"answer": REFUSAL_MSG, "sources": [], "oos": True}
 
-    # Layer 4b: LLM produced our exact canonical refusal
-    if "outside the scope of our hr knowledge base" in answer.lower():
+    # Layer 4b: LLM echoed our exact canonical refusal
+    if "outside the scope of our hr knowledge base" in ans_lower:
         return {"answer": REFUSAL_MSG, "sources": [], "oos": True}
 
     # Deduplicate sources
